@@ -1,0 +1,200 @@
+routes/companies.js
+const express = require("express");
+const router = new express.Router();
+const Company = require("../models/company");
+const { BadRequestError } = require("../expressError");
+
+router.get("/", async function (req, res, next) {
+  try {
+    const { name, minEmployees, maxEmployees } = req.query;
+
+    if (minEmployees !== undefined && maxEmployees !== undefined) {
+      if (Number(minEmployees) > Number(maxEmployees)) {
+        throw new BadRequestError("minEmployees cannot be greater than maxEmployees");
+      }
+    }
+
+    const companies = await Company.findAll({ name, minEmployees, maxEmployees });
+    return res.json({ companies });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+module.exports = router;
+
+models/company.js
+class Company {
+  static async findAll({ name, minEmployees, maxEmployees }) {
+    let query = `SELECT handle, name, num_employees AS "numEmployees" FROM companies`;
+    let whereExpressions = [];
+    let queryValues = [];
+
+    if (name !== undefined) {
+      queryValues.push(`%${name}%`);
+      whereExpressions.push(`name ILIKE $${queryValues.length}`);
+    }
+
+    if (minEmployees !== undefined) {
+      queryValues.push(minEmployees);
+      whereExpressions.push(`num_employees >= $${queryValues.length}`);
+    }
+
+    if (maxEmployees !== undefined) {
+      queryValues.push(maxEmployees);
+      whereExpressions.push(`num_employees <= $${queryValues.length}`);
+    }
+
+    if (whereExpressions.length > 0) {
+      query += " WHERE " + whereExpressions.join(" AND ");
+    }
+
+    query += " ORDER BY name";
+    const companiesRes = await db.query(query, queryValues);
+    return companiesRes.rows;
+  }
+}
+
+middleware/auth.js
+const { UnauthorizedError } = require("../expressError");
+
+function ensureAdmin(req, res, next) {
+  try {
+    if (!res.locals.user || !res.locals.user.isAdmin) {
+      throw new UnauthorizedError();
+    }
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+}
+
+module.exports = { ensureAdmin };
+
+models/job.js
+class Job {
+  /** Find all jobs */
+  static async findAll({ title, minSalary, hasEquity }) {
+    let query = `SELECT id, title, salary, equity FROM jobs`;
+    let whereExpressions = [];
+    let queryValues = [];
+
+    if (title !== undefined) {
+      queryValues.push(`%${title}%`);
+      whereExpressions.push(`title ILIKE $${queryValues.length}`);
+    }
+
+    if (minSalary !== undefined) {
+      queryValues.push(minSalary);
+      whereExpressions.push(`salary >= $${queryValues.length}`);
+    }
+
+    if (hasEquity === "true") {
+      whereExpressions.push(`equity > 0`);
+    }
+
+    if (whereExpressions.length > 0) {
+      query += " WHERE " + whereExpressions.join(" AND ");
+    }
+
+    query += " ORDER BY title";
+    const jobsRes = await db.query(query, queryValues);
+    return jobsRes.rows;
+  }
+}
+
+routes/jobs.js
+const express = require("express");
+const router = new express.Router();
+const Job = require("../models/job");
+const { ensureAdmin } = require("../middleware/auth");
+
+router.get("/", async function (req, res, next) {
+  try {
+    const { title, minSalary, hasEquity } = req.query;
+    const jobs = await Job.findAll({ title, minSalary, hasEquity });
+    return res.json({ jobs });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+router.post("/", ensureAdmin, async function (req, res, next) {
+  try {
+    const job = await Job.create(req.body);
+    return res.status(201).json({ job });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+router.patch("/:id", ensureAdmin, async function (req, res, next) {
+  try {
+    const job = await Job.update(req.params.id, req.body);
+    return res.json({ job });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+router.delete("/:id", ensureAdmin, async function (req, res, next) {
+  try {
+    await Job.remove(req.params.id);
+    return res.json({ deleted: req.params.id });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+module.exports = router;
+
+routes/companies.js
+router.get("/:handle", async function (req, res, next) {
+  try {
+    const company = await Company.get(req.params.handle);
+    const jobs = await Job.findByCompanyHandle(req.params.handle);
+    company.jobs = jobs;
+    return res.json({ company });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+models/company.js
+class Company {
+  static async get(handle) {
+    const companyRes = await db.query(
+      `SELECT handle, name, description, num_employees AS "numEmployees", logo_url AS "logoUrl"
+       FROM companies
+       WHERE handle = $1`,
+      [handle]);
+
+    const company = companyRes.rows[0];
+    if (!company) throw new NotFoundError(`No company: ${handle}`);
+    return company;
+  }
+}
+
+routes/users.js
+router.post("/:username/jobs/:id", async function (req, res, next) {
+  try {
+    await User.applyToJob(req.params.username, req.params.id);
+    return res.json({ applied: req.params.id });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+models/user.js
+class User {
+  static async applyToJob(username, jobId) {
+    const result = await db.query(
+      `INSERT INTO applications (username, job_id)
+       VALUES ($1, $2)
+       RETURNING job_id`,
+      [username, jobId]);
+    
+    return result.rows[0];
+  }
+}
+
