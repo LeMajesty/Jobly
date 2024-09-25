@@ -1,0 +1,305 @@
+import axios from "axios";
+
+const BASE_URL = process.env.REACT_APP_BASE_URL || "http://localhost:3001";
+
+
+class JoblyApi {
+  static token;
+
+  static async request(endpoint, data = {}, method = "get") {
+    console.debug("API Call:", endpoint, data, method);
+
+    const url = `${BASE_URL}/${endpoint}`;
+    const headers = { Authorization: `Bearer ${JoblyApi.token}` };
+    const params = (method === "get") ? data : {};
+
+    try {
+      return (await axios({ url, method, data, params, headers })).data;
+    } catch (err) {
+      console.error("API Error:", err.response);
+      let message = err.response.data.error.message;
+      throw Array.isArray(message) ? message : [message];
+    }
+  }
+
+  // Individual API routes
+  static async getCompany(handle) {
+    let res = await this.request(`companies/${handle}`);
+    return res.company;
+  }
+
+  static async getCompanies() {
+    let res = await this.request("companies");
+    return res.companies; // Assuming the API returns an array of companies
+  }
+
+  static async getJobs() {
+    let res = await this.request("jobs");
+    return res.jobs; // Assuming the API returns an array of jobs
+  }
+
+  static async getJob(jobId) {
+    let res = await this.request(`jobs/${jobId}`);
+    return res.job; // Assuming the API returns job details
+  }
+
+  static async registerUser(data) {
+    let res = await this.request("auth/register", data, "post");
+    return res.token; // Assuming the API returns a token
+  }
+
+  static async loginUser(data) {
+    let res = await this.request("auth/login", data, "post");
+    JoblyApi.token = res.token; // Store token for future requests
+    return res; // Return user data or token
+  }
+
+  static async getUser(username) {
+    let res = await this.request(`users/${username}`);
+    return res.user; // Assuming the API returns user details
+  }
+
+  // Other API methods can be added here...
+}
+
+//Random token for testing purposes
+JoblyApi.token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZ" +
+    "SI6InRlc3R1c2VyIiwiaXNBZG1pbiI6ZmFsc2UsImlhdCI6MTU5ODE1OTI1OX0." +
+    "FtrMwBQwe6Ue-glIFgz_Nf8XxRT2YecFCiSpYL0fCXc";
+
+export default JoblyApi;
+
+import React from 'react';
+
+function Home() {
+  return <h1>Welcome to Jobly!</h1>;
+}
+
+export default Home;
+import React from 'react';
+
+function Companies() {
+  return <h1>List of Companies</h1>;
+}
+
+export default Companies;
+import React from 'react';
+
+function CompanyDetail() {
+  return <h1>Company Details</h1>;
+}
+
+export default CompanyDetail;
+import React from 'react';
+
+function Jobs() {
+  return <h1>List of Jobs</h1>;
+}
+
+export default Jobs;
+import React from 'react';
+
+function Login() {
+  return <h1>Login/Signup Form</h1>;
+}
+
+export default Login;
+import React from 'react';
+
+function Profile() {
+  return <h1>Edit Profile Page</h1>;
+}
+
+export default Profile;
+import React from 'react';
+import { Link } from 'react-router-dom';
+
+function NavBar() {
+  return (
+    <nav>
+      <ul>
+        <li>
+          <Link to="/">Home</Link>
+        </li>
+        <li>
+          <Link to="/companies">Companies</Link>
+        </li>
+        <li>
+          <Link to="/jobs">Jobs</Link>
+        </li>
+        <li>
+          <Link to="/login">Login/Signup</Link>
+        </li>
+        <li>
+          <Link to="/profile">Profile</Link>
+        </li>
+      </ul>
+    </nav>
+  );
+}
+
+export default NavBar;
+import React from 'react';
+import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';
+import NavBar from './components/NavBar';
+import Home from './components/Home';
+import Companies from './components/Companies';
+import CompanyDetail from './components/CompanyDetail';
+import Jobs from './components/Jobs';
+import Login from './components/Login';
+import Profile from './components/Profile';
+
+function App() {
+  return (
+    <Router>
+      <div>
+        <NavBar />
+        <Switch>
+          <Route exact path="/" component={Home} />
+          <Route exact path="/companies" component={Companies} />
+          <Route exact path="/companies/:handle" component={CompanyDetail} />
+          <Route exact path="/jobs" component={Jobs} />
+          <Route exact path="/login" component={Login} />
+          <Route exact path="/profile" component={Profile} />
+        </Switch>
+      </div>
+    </Router>
+  );
+}
+
+export default App;
+import React from 'react';
+import { Link } from 'react-router-dom';
+
+function CompanyCard({ company }) {
+  return (
+    <div className="company-card">
+      <Link to={`/companies/${company.handle}`}>
+        <h2>{company.name}</h2>
+        <p>{company.description}</p>
+      </Link>
+    </div>
+  );
+}
+
+export default CompanyCard;
+import React, { useState, useEffect } from 'react';
+import JoblyApi from '../api'; 
+import CompanyCard from './CompanyCard';
+
+function CompanyList() {
+  const [companies, setCompanies] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    async function fetchCompanies() {
+      const res = await JoblyApi.getCompanies(searchTerm);
+      setCompanies(res.companies);
+    }
+    fetchCompanies();
+  }, [searchTerm]);
+
+  const handleSearch = (e) => {
+    setSearchTerm(e.target.value);
+  };
+
+  return (
+    <div>
+      <h1>Companies</h1>
+      <input 
+        type="text" 
+        placeholder="Search companies..." 
+        value={searchTerm}
+        onChange={handleSearch}
+      />
+      <div className="company-list">
+        {companies.map(company => (
+          <CompanyCard key={company.handle} company={company} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default CompanyList;
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import JoblyApi from '../api'; 
+
+function CompanyDetail() {
+  const { handle } = useParams();
+  const [company, setCompany] = useState(null);
+
+  useEffect(() => {
+    async function fetchCompany() {
+      const res = await JoblyApi.getCompany(handle);
+      setCompany(res);
+    }
+    fetchCompany();
+  }, [handle]);
+
+  if (!company) return <p>Loading...</p>;
+
+  return (
+    <div>
+      <h1>{company.name}</h1>
+      <p>{company.description}</p>
+      <h3>Employees:</h3>
+      <ul>
+        {company.employees.map(emp => (
+          <li key={emp.id}>{emp.name}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default CompanyDetail;
+
+import React from 'react';
+import { Link } from 'react-router-dom';
+
+function JobCard({ job }) {
+  return (
+    <div className="job-card">
+      <Link to={`/jobs/${job.id}`}>
+        <h2>{job.title}</h2>
+        <p>{job.company}</p>
+        <p>{job.location}</p>
+      </Link>
+    </div>
+  );
+}
+
+export default JobCard;
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import JoblyApi from '../api'; // Import your JoblyApi class
+
+function JobDetail() {
+  const { id } = useParams();
+  const [job, setJob] = useState(null);
+
+  useEffect(() => {
+    async function fetchJob() {
+      const res = await JoblyApi.getJob(id);
+      setJob(res);
+    }
+    fetchJob();
+  }, [id]);
+
+  if (!job) return <p>Loading...</p>;
+
+  return (
+    <div>
+      <h1>{job.title}</h1>
+      <p>{job.company}</p>
+      <p>{job.location}</p>
+      <p>{job.description}</p>
+      {/* Add an "apply" button here later */}
+    </div>
+  );
+}
+
+export default JobDetail;
+
